@@ -4,5 +4,3 @@ matplotlib
 IPython
 pillow<7
 tqdm
-visdom
-scipy==1.1.0
