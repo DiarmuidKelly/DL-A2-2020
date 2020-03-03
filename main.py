@@ -21,19 +21,26 @@ from gym.wrappers import AtariPreprocessing
 
 import DQN
 
-env = gym.make('Breakout-v0').unwrapped
-env.reset()
-env.render()
+
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
+is_ipython = True
 if is_ipython:
     from IPython import display
+    print("Ipython")
+
+print("Making Breakout")
+env = gym.make('Breakout-v0').unwrapped
+env.reset()
+img = plt.imshow(env.render(mode='rgb_array'))
+print("Breakout Rendered")
 
 plt.ion()
 
 # if gpu is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(device)
 
 
 Transition = namedtuple('Transition',
@@ -82,12 +89,19 @@ def get_screen():
     screen = cv2.resize(screen, dsize=(80, 80))
     screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
     screen = cv2.cvtColor(screen, cv2.COLOR_RGB2GRAY)
-    # cv2.imshow('Gray image', screen)
+    x = 0
+    y = 10
+    h = 80
+    w = 80
+    # DEBUGGING
+    ######################################################
+    # cv2.imshow('Gray image', screen[y:y+h, x:x+w])
     #
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
     # screen = screen.transpose(2, 0, 1)
+    screen = screen[y:y+h, x:x+w]
     screen = torch.from_numpy(screen)
 
     # Resize, and add a batch dimension (BCHW)
@@ -153,6 +167,7 @@ def plot_durations():
     if len(durations_t) >= 100:
         means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
         means = torch.cat((torch.zeros(99), means))
+        print(means)
         plt.plot(means.numpy())
 
     plt.pause(0.001)  # pause a bit so that plots are updated
@@ -205,8 +220,9 @@ def optimize_model():
     optimizer.step()
 
 
-num_episodes = 20
+num_episodes = 200
 for i_episode in range(num_episodes):
+    print("Training Episode %s" % i_episode)
     # Initialize the environment and state
     env.reset()
     last_screen = get_screen()
@@ -234,13 +250,16 @@ for i_episode in range(num_episodes):
 
         # Perform one step of the optimization (on the target network)
         optimize_model()
-        env.render()
+        # img.set_data(env.render())
 
         if done:
             episode_durations.append(t + 1)
             plot_durations()
 
             break
+
+    if i_episode % 50 == 0:
+        torch.save(policy_net.state_dict(), ('./model1' + str(i_episode)))
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
@@ -248,4 +267,5 @@ for i_episode in range(num_episodes):
 print('Complete')
 env.close()
 plt.ioff()
-plt.show()
+plt.savefig("./run1.png")
+

@@ -1,0 +1,12 @@
+#!/bin/bash
+#SBATCH --time=1:00:00
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:v100:1
+#SBATCH --mem=12000
+module load Python
+pip install -e ./gym-master/. --user
+pip install -e './gym-master/.[atari]' --user
+pip install torchvision --user
+pip install matplotlib --user
+
+xvfb-run -s "-screen 0 1400x900x24" python main.py
