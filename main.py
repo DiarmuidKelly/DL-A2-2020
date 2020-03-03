@@ -1,4 +1,6 @@
 import gym
+from gym.spaces import Box
+
 import math
 import random
 import numpy as np
@@ -13,10 +15,13 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
+from gym.wrappers import AtariPreprocessing
 
 import DQN
 
 env = gym.make('Breakout-v0').unwrapped
+env.reset()
+env.render()
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -65,7 +70,9 @@ def get_screen():
     screen = env.render(mode='rgb_array').transpose((2, 0, 1))
     # Cart is in the lower half, so strip off the top and bottom of the screen
     _, screen_height, screen_width = screen.shape
-    screen = screen[:, int(screen_height*0.4):int(screen_height * 0.8)]
+    # screen = screen[:, int(80):int(80)]
+    # _low, _high, _obs_dtype = (0, 255, np.uint8)
+    # screen = Box(low=_low, high=_high, shape=(80, 80), dtype=_obs_dtype)
 
     # Strip off the edges, so that we have a square image centered on a cart
     # Convert to float, rescale, convert to torch tensor
@@ -187,7 +194,7 @@ def optimize_model():
     optimizer.step()
 
 
-num_episodes = 50
+num_episodes = 20
 for i_episode in range(num_episodes):
     # Initialize the environment and state
     env.reset()
@@ -216,16 +223,18 @@ for i_episode in range(num_episodes):
 
         # Perform one step of the optimization (on the target network)
         optimize_model()
+        env.render()
+
         if done:
             episode_durations.append(t + 1)
             plot_durations()
+
             break
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
 
 print('Complete')
-env.render()
 env.close()
 plt.ioff()
 plt.show()
