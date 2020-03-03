@@ -22,6 +22,7 @@ from gym.wrappers import AtariPreprocessing
 import DQN
 
 load = True
+train = False
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -127,7 +128,7 @@ n_actions = env.action_space.n
 policy_net = DQN.DQN(screen_height, screen_width, n_actions).to(device)
 target_net = DQN.DQN(screen_height, screen_width, n_actions).to(device)
 if load:
-    policy_net.load_state_dict(torch.load('./model1950', map_location=torch.device('cpu')))
+    policy_net.load_state_dict(torch.load('./modelcomplete', map_location=torch.device('cpu')))
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
@@ -252,8 +253,9 @@ for i_episode in range(num_episodes):
         state = next_state
 
         # Perform one step of the optimization (on the target network)
-        optimize_model()
         env.render()
+        if train:
+            optimize_model()
 
         if done:
             episode_durations.append(t + 1)
