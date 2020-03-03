@@ -21,7 +21,7 @@ from gym.wrappers import AtariPreprocessing
 
 import DQN
 
-
+load = True
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -80,7 +80,7 @@ def get_screen():
     # Cart is in the lower half, so strip off the top and bottom of the screen
     _, screen_height, screen_width = screen.shape
     # screen = screen[:, int(80):int(80)]
-    # _low, _high, _obs_dtype = (0, 255, np.uint8)
+        # _low, _high, _obs_dtype = (0, 255, np.uint8)
     # screen = Box(low=_low, high=_high, shape=(80, 80), dtype=_obs_dtype)
 
     # Strip off the edges, so that we have a square image centered on a cart
@@ -95,7 +95,7 @@ def get_screen():
     w = 80
     # DEBUGGING
     ######################################################
-    # cv2.imshow('Gray image', screen[y:y+h, x:x+w])
+    cv2.imshow('Gray image', screen[y:y+h, x:x+w])
     #
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
@@ -126,6 +126,8 @@ n_actions = env.action_space.n
 
 policy_net = DQN.DQN(screen_height, screen_width, n_actions).to(device)
 target_net = DQN.DQN(screen_height, screen_width, n_actions).to(device)
+if load:
+    policy_net.load_state_dict(torch.load('./model1950', map_location=torch.device('cpu')))
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
@@ -163,7 +165,6 @@ def plot_durations():
     plt.xlabel('Episode')
     plt.ylabel('Duration')
     plt.plot(durations_t.numpy())
-    print(durations_t)
 
     # Take 100 episode averages and plot them too
     if len(durations_t) >= 100:
@@ -175,6 +176,7 @@ def plot_durations():
     if is_ipython:
         display.clear_output(wait=True)
         display.display(plt.gcf())
+
 
 def optimize_model():
     if len(memory) < BATCH_SIZE:
@@ -221,7 +223,7 @@ def optimize_model():
     optimizer.step()
 
 
-num_episodes = 200
+num_episodes = 5000
 for i_episode in range(num_episodes):
     print("Training Episode %s" % i_episode)
     # Initialize the environment and state
@@ -251,7 +253,7 @@ for i_episode in range(num_episodes):
 
         # Perform one step of the optimization (on the target network)
         optimize_model()
-        # img.set_data(env.render())
+        env.render()
 
         if done:
             episode_durations.append(t + 1)
@@ -260,13 +262,14 @@ for i_episode in range(num_episodes):
             break
 
     if i_episode % 50 == 0:
-        torch.save(policy_net.state_dict(), ('./model1' + str(i_episode)))
+        torch.save(policy_net.state_dict(), ('./model' + str(i_episode)))
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
 
 print('Complete')
+torch.save(policy_net.state_dict(), ('./modelcomplete'))
 env.close()
 plt.ioff()
-plt.savefig("./run1.png")
+plt.savefig("./runcomplete.png")
 
