@@ -1,5 +1,4 @@
 import gym
-from gym.spaces import Box
 
 import math
 import random
@@ -21,8 +20,8 @@ from gym.wrappers import AtariPreprocessing
 
 import DQN
 
-load = True
-train = False
+load = False
+train = True
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -35,6 +34,8 @@ print("Making Breakout")
 env = gym.make('Breakout-v0').unwrapped
 env.reset()
 img = plt.imshow(env.render(mode='rgb_array'))
+
+
 print("Breakout Rendered")
 
 plt.ion()
@@ -77,7 +78,7 @@ resize = T.Compose([T.ToPILImage(),
 def get_screen():
     # Returned screen requested by gym is 400x600x3, but is sometimes larger
     # such as 800x1200x3. Transpose it into torch order (CHW).
-    screen = env.render(mode='rgb_array')
+    screen = env.render(mode='human')
     # Cart is in the lower half, so strip off the top and bottom of the screen
     _, screen_height, screen_width = screen.shape
     # screen = screen[:, int(80):int(80)]
@@ -87,6 +88,13 @@ def get_screen():
     # Strip off the edges, so that we have a square image centered on a cart
     # Convert to float, rescale, convert to torch tensor
     # (this doesn't require a copy)
+    # screen = screen.transpose(2, 0, 1)
+
+    cv2.imshow('Gray image', screen)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
     screen = cv2.resize(screen, dsize=(80, 80))
     screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
     screen = cv2.cvtColor(screen, cv2.COLOR_RGB2GRAY)
@@ -96,8 +104,8 @@ def get_screen():
     w = 80
     # DEBUGGING
     ######################################################
-    cv2.imshow('Gray image', screen[y:y+h, x:x+w])
-    #
+    # cv2.imshow('Gray image', screen[y:y+h, x:x+w])
+    # #
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
