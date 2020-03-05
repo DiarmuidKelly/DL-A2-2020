@@ -90,10 +90,10 @@ def get_screen():
     # (this doesn't require a copy)
     # screen = screen.transpose(2, 0, 1)
 
-    cv2.imshow('Gray image', screen)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.imshow('Gray image', screen)
+    #
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
 
     screen = cv2.resize(screen, dsize=(80, 80))
     screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
