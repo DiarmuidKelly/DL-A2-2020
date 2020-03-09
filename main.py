@@ -9,6 +9,7 @@ from collections import namedtuple
 from itertools import count
 from PIL import Image
 import cv2
+import pickle
 
 import torch
 import torch.nn as nn
@@ -164,9 +165,10 @@ def select_action(state):
 
 
 episode_durations = []
+cumulative_reward = []
 
 
-def plot_durations():
+def plot_durations(save_fig=False):
     plt.figure(2)
     plt.clf()
     durations_t = torch.tensor(episode_durations, dtype=torch.float)
@@ -182,6 +184,31 @@ def plot_durations():
         plt.plot(means.numpy())
 
     plt.pause(0.001)  # pause a bit so that plots are updated
+    if save_fig:
+        plt.savefig("./durations_complete.png")
+    if is_ipython:
+        display.clear_output(wait=True)
+        display.display(plt.gcf())
+
+
+def plot_rewards(save_fig=False):
+    plt.figure(3)
+    plt.clf()
+    rewards = torch.tensor(cumulative_reward, dtype=torch.float)
+    plt.title('Training...')
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+    plt.plot(rewards.numpy())
+
+    # Take 100 episode averages and plot them too
+    if len(rewards) >= 100:
+        means = rewards.unfold(0, 100, 1).mean(1).view(-1)
+        means = torch.cat((torch.zeros(99), means))
+        plt.plot(means.numpy())
+
+    plt.pause(0.001)  # pause a bit so that plots are updated
+    if save_fig:
+        plt.savefig("./rewards_complete.png")
     if is_ipython:
         display.clear_output(wait=True)
         display.display(plt.gcf())
@@ -232,10 +259,11 @@ def optimize_model():
     optimizer.step()
 
 
-num_episodes = 5000
+num_episodes = 500
 for i_episode in range(num_episodes):
     print("Training Episode %s" % i_episode)
     # Initialize the environment and state
+    temp_reward = 0
     env.reset()
     last_screen = get_screen()
     current_screen = get_screen()
@@ -259,15 +287,17 @@ for i_episode in range(num_episodes):
 
         # Move to the next state
         state = next_state
-
+        temp_reward += reward.data[0]
         # Perform one step of the optimization (on the target network)
         env.render()
         if train:
             optimize_model()
 
         if done:
+            cumulative_reward.append(temp_reward)
             episode_durations.append(t + 1)
             plot_durations()
+            plot_rewards()
 
             break
 
@@ -278,8 +308,13 @@ for i_episode in range(num_episodes):
         target_net.load_state_dict(policy_net.state_dict())
 
 print('Complete')
-torch.save(policy_net.state_dict(), ('./modelcomplete'))
+plot_durations(save_fig=True)
+plot_rewards()
+
+torch.save(policy_net.state_dict(), './modelcomplete.pyt')
+with open('modelMemory.pkl', 'wb') as output:
+    pickle.dump(memory, output, pickle.HIGHEST_PROTOCOL)
 env.close()
 plt.ioff()
-plt.savefig("./runcomplete.png")
+
 
