@@ -23,6 +23,10 @@ import DQN
 
 load = False
 train = True
+i_episode = 0
+
+episode_durations = []
+cumulative_reward = []
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -109,7 +113,6 @@ def get_screen():
     # #
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
-
     # screen = screen.transpose(2, 0, 1)
     screen = screen[y:y+h, x:x+w]
     screen = torch.from_numpy(screen)
@@ -118,7 +121,7 @@ def get_screen():
     return resize(screen).unsqueeze(0).to(device)
 
 
-BATCH_SIZE = 128
+BATCH_SIZE = 512
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
@@ -136,13 +139,20 @@ n_actions = env.action_space.n
 
 policy_net = DQN.DQN(screen_height, screen_width, n_actions).to(device)
 target_net = DQN.DQN(screen_height, screen_width, n_actions).to(device)
+memory = ReplayMemory(350000)
+
 if load:
-    policy_net.load_state_dict(torch.load('./modelcomplete', map_location=torch.device('cpu')))
+    policy_net.load_state_dict(torch.load('./modelcomplete.pyt', map_location=torch.device('cpu')))
+    with open('./modelMemory.pkl', 'rb') as pickle_file:
+        memory = pickle.load(pickle_file)
+    with open('./cumulative_rewards.pkl', 'rb') as pickle_file:
+        cumulative_reward = pickle.load(pickle_file)
+    with open('./episode_durations.pkl', 'rb') as pickle_file:
+        episode_durations = pickle.load(pickle_file)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 optimizer = optim.RMSprop(policy_net.parameters())
-memory = ReplayMemory(10000)
 
 
 steps_done = 0
@@ -162,10 +172,6 @@ def select_action(state):
             return policy_net(state).max(1)[1].view(1, 1)
     else:
         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
-
-
-episode_durations = []
-cumulative_reward = []
 
 
 def plot_durations(save_fig=False):
@@ -215,7 +221,7 @@ def plot_rewards(save_fig=False):
 
 
 def optimize_model():
-    if len(memory) < BATCH_SIZE:
+    if len(memory) < BATCH_SIZE or len(memory.memory) < 50000:
         return
     transitions = memory.sample(BATCH_SIZE)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
@@ -259,7 +265,7 @@ def optimize_model():
     optimizer.step()
 
 
-num_episodes = 500
+num_episodes = 10000
 for i_episode in range(num_episodes):
     print("Training Episode %s" % i_episode)
     # Initialize the environment and state
@@ -301,19 +307,24 @@ for i_episode in range(num_episodes):
 
             break
 
-    if i_episode % 50 == 0:
+    if i_episode % 100 == 0:
         torch.save(policy_net.state_dict(), ('./model' + str(i_episode)))
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
-
+    i_episode += 1
 print('Complete')
+print(i_episode)
 plot_durations(save_fig=True)
-plot_rewards()
+plot_rewards(save_fig=True)
 
 torch.save(policy_net.state_dict(), './modelcomplete.pyt')
 with open('modelMemory.pkl', 'wb') as output:
     pickle.dump(memory, output, pickle.HIGHEST_PROTOCOL)
+with open('cumulative_rewards.pkl', 'wb') as output:
+    pickle.dump(cumulative_reward, output, pickle.HIGHEST_PROTOCOL)
+with open('episode_durations.pkl', 'wb') as output:
+    pickle.dump(episode_durations, output, pickle.HIGHEST_PROTOCOL)
 env.close()
 plt.ioff()
 
