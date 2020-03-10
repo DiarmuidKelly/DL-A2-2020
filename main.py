@@ -100,18 +100,18 @@ def get_screen():
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
-    screen = cv2.resize(screen, dsize=(80, 80))
+    screen = cv2.resize(screen, dsize=(80, 90))
     screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
     screen = cv2.cvtColor(screen, cv2.COLOR_RGB2GRAY)
     x = 0
     y = 10
-    h = 80
+    h = 90
     w = 80
     # DEBUGGING
     ######################################################
-    # cv2.imshow('Gray image', screen[y:y+h, x:x+w])
-    # #
-    # cv2.waitKey(0)
+    cv2.imshow('Gray image', screen[y:y+h, x:x+w])
+    #
+    cv2.waitKey(10)
     # cv2.destroyAllWindows()
     # screen = screen.transpose(2, 0, 1)
     screen = screen[y:y+h, x:x+w]
@@ -121,7 +121,7 @@ def get_screen():
     return resize(screen).unsqueeze(0).to(device)
 
 
-BATCH_SIZE = 512
+BATCH_SIZE = 5000
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
@@ -143,12 +143,12 @@ memory = ReplayMemory(350000)
 
 if load:
     policy_net.load_state_dict(torch.load('./modelcomplete.pyt', map_location=torch.device('cpu')))
-    with open('./modelMemory.pkl', 'rb') as pickle_file:
-        memory = pickle.load(pickle_file)
-    with open('./cumulative_rewards.pkl', 'rb') as pickle_file:
-        cumulative_reward = pickle.load(pickle_file)
-    with open('./episode_durations.pkl', 'rb') as pickle_file:
-        episode_durations = pickle.load(pickle_file)
+    # with open('./modelMemory.pkl', 'rb') as pickle_file:
+    #     memory = pickle.load(pickle_file)
+    # with open('./cumulative_rewards.pkl', 'rb') as pickle_file:
+    #     cumulative_reward = pickle.load(pickle_file)
+    # with open('./episode_durations.pkl', 'rb') as pickle_file:
+    #     episode_durations = pickle.load(pickle_file)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
