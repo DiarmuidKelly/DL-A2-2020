@@ -27,9 +27,10 @@ load = False
 train = True
 i_episode = 0
 gamma = 0.7
-
+seed = random.randint(0,100)
 episode_durations = []
 cumulative_reward = []
+running_loss = []
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -158,7 +159,7 @@ def plot_durations(save_fig=False):
 
     plt.pause(0.001)  # pause a bit so that plots are updated
     if save_fig:
-        plt.savefig("./durations_complete.png")
+        plt.savefig("./durations_complete"+str(seed) + ".png")
     if is_ipython:
         display.clear_output(wait=True)
         display.display(plt.gcf())
@@ -181,11 +182,32 @@ def plot_rewards(save_fig=False):
 
     plt.pause(0.001)  # pause a bit so that plots are updated
     if save_fig:
-        plt.savefig("./rewards_complete.png")
+        plt.savefig("./rewards_complete"+str(seed) + ".png")
     if is_ipython:
         display.clear_output(wait=True)
         display.display(plt.gcf())
 
+def plot_loss(save_fig=False):
+    plt.figure(3)
+    plt.clf()
+    loss = torch.tensor(running_loss, dtype=torch.float)
+    plt.title('Training...')
+    plt.xlabel('Episode')
+    plt.ylabel('Loss')
+    plt.plot(loss.numpy())
+
+    # Take 100 episode averages and plot them too
+    if len(loss) >= 100:
+        means = loss.unfold(0, 100, 1).mean(1).view(-1)
+        means = torch.cat((torch.zeros(99), means))
+        plt.plot(means.numpy())
+
+    plt.pause(0.001)  # pause a bit so that plots are updated
+    if save_fig:
+        plt.savefig("./loss_complete"+str(seed) + ".png")
+    if is_ipython:
+        display.clear_output(wait=True)
+        display.display(plt.gcf())
 
 def optimize_model():
     if len(memory) < BATCH_SIZE or len(memory) < 5000:
@@ -244,7 +266,7 @@ def optimize_model():
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
-
+        running_loss[-1] += loss.data
         # Optimize the model
         optimizer.zero_grad()
         loss.backward()
@@ -252,14 +274,16 @@ def optimize_model():
             param.grad.data.clamp_(-1, 1)
         optimizer.step()
 
+
 # GOOGLE: M
-num_episodes = 100
+num_episodes = 500
 k = 4
 # GOOGLE: for episode =1 do
 for i_episode in range(num_episodes):
     print("Training Episode %s" % i_episode)
     # Initialize the environment and state
     temp_reward = 0
+    running_loss.append(0)
     env.reset()
     last_screen = get_screen()
     current_screen = get_screen()
@@ -303,7 +327,7 @@ for i_episode in range(num_episodes):
             episode_durations.append(t + 1)
             plot_durations(save_fig=True)
             plot_rewards(save_fig=True)
-
+            plot_loss()
             break
     if i_episode % 100 == 0:
         torch.save(policy_net.state_dict(), ('./model/model' + str(i_episode)))
@@ -319,11 +343,11 @@ plot_durations(save_fig=True)
 plot_rewards(save_fig=True)
 
 torch.save(policy_net.state_dict(), './model/modelcomplete.pyt')
-with open('./model/modelMemory.pkl', 'wb') as output:
+with open('./model/modelMemory'+str(seed) + '.pkl', 'wb') as output:
     pickle.dump(memory, output, pickle.HIGHEST_PROTOCOL)
-with open('./model/cumulative_rewards.pkl', 'wb') as output:
+with open('./model/cumulative_rewards'+str(seed) + '.pkl', 'wb') as output:
     pickle.dump(cumulative_reward, output, pickle.HIGHEST_PROTOCOL)
-with open('./model/episode_durations.pkl', 'wb') as output:
+with open('./model/episode_durations'+str(seed) + '.pkl', 'wb') as output:
     pickle.dump(episode_durations, output, pickle.HIGHEST_PROTOCOL)
 env.close()
 plt.ioff()
