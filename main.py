@@ -20,10 +20,13 @@ import scipy.misc
 from gym.wrappers import AtariPreprocessing
 
 import DQN
+import Googles_DQN
+from replay_memory import ReplayMemory
 
 load = False
 train = True
 i_episode = 0
+gamma = 0.7
 
 episode_durations = []
 cumulative_reward = []
@@ -40,7 +43,6 @@ env = gym.make('Breakout-v0').unwrapped
 env.reset()
 img = plt.imshow(env.render(mode='rgb_array'))
 
-
 print("Breakout Rendered")
 
 plt.ion()
@@ -54,70 +56,32 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
 
-class ReplayMemory(object):
-
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.memory = []
-        self.position = 0
-
-    def push(self, *args):
-        """Saves a transition."""
-        if len(self.memory) < self.capacity:
-            self.memory.append(None)
-        self.memory[self.position] = Transition(*args)
-        self.position = (self.position + 1) % self.capacity
-
-    def sample(self, batch_size):
-        sample = []
-        for s in range(batch_size):
-            r = random.randint(0, len(self.memory)-3)
-            sample.append(self.memory[r:r+4])
-        return sample
-
-    def __len__(self):
-        return len(self.memory)
-
-
 resize = T.Compose([T.ToPILImage(),
                     T.Resize(40, interpolation=Image.CUBIC),
                     T.ToTensor()])
 
 
 def get_screen():
-    # Returned screen requested by gym is 400x600x3, but is sometimes larger
-    # such as 800x1200x3. Transpose it into torch order (CHW).
+
     screen = env.render(mode='rgb_array')
-    # Cart is in the lower half, so strip off the top and bottom of the screen
     _, screen_height, screen_width = screen.shape
-    # screen = screen[:, int(80):int(80)]
-        # _low, _high, _obs_dtype = (0, 255, np.uint8)
-    # screen = Box(low=_low, high=_high, shape=(80, 80), dtype=_obs_dtype)
-
-    # Strip off the edges, so that we have a square image centered on a cart
-    # Convert to float, rescale, convert to torch tensor
-    # (this doesn't require a copy)
-    # screen = screen.transpose(2, 0, 1)
-
-    # cv2.imshow('Gray image', screen)
-    #
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
 
     screen = cv2.resize(screen, dsize=(80, 90))
     screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
     screen = cv2.cvtColor(screen, cv2.COLOR_RGB2GRAY)
+    # Crop screen to show only relevant area to NN
     x = 0
     y = 10
     h = 90
     w = 80
+    ######################################################
     # DEBUGGING
     ######################################################
+    cv2.namedWindow('Gray image', cv2.WINDOW_NORMAL)
     cv2.imshow('Gray image', screen[y:y+h, x:x+w])
-    #
-    cv2.waitKey(10)
-    # cv2.destroyAllWindows()
-    # screen = screen.transpose(2, 0, 1)
+    cv2.resizeWindow('Gray image', 400, 400)
+    cv2.waitKey(1)
+
     screen = screen[y:y+h, x:x+w]
     screen = torch.from_numpy(screen)
 
@@ -125,24 +89,23 @@ def get_screen():
     return resize(screen).unsqueeze(0).to(device)
 
 
-BATCH_SIZE = 512
+BATCH_SIZE = 50
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
 TARGET_UPDATE = 10
 
-# Get screen size so that we can initialize layers correctly based on shape
-# returned from AI gym. Typical dimensions at this point are close to 3x40x90
-# which is the result of a clamped and down-scaled render buffer in get_screen()
 init_screen = get_screen()
 _, _, screen_height, screen_width = init_screen.shape
 
 # Get number of actions from gym action space
 n_actions = env.action_space.n
 
-policy_net = DQN.DQN(screen_height, screen_width, n_actions).to(device)
-target_net = DQN.DQN(screen_height, screen_width, n_actions).to(device)
+policy_net = Googles_DQN.DQN(screen_height, screen_width, n_actions).to(device)
+target_net = Googles_DQN.DQN(screen_height, screen_width, n_actions).to(device)
+print(target_net)
+# GOOGLE: Initiliaze replay memory D to capacity N
 memory = ReplayMemory(50000)
 
 if load:
@@ -225,13 +188,16 @@ def plot_rewards(save_fig=False):
 
 
 def optimize_model():
-    if len(memory) < BATCH_SIZE or len(memory.memory) < 5000:
+    if len(memory) < BATCH_SIZE or len(memory) < 5000:
         return
-    transitions = memory.sample(BATCH_SIZE)
+    # GOOGLE: Line 11
+    for s in range(BATCH_SIZE):
+        index = random.randint(0, len(memory) - 4)
+        t = memory.sample(index)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
     # to Transition of batch-arrays.
-    for t in transitions:
+    # for t in transitions:
         batch = Transition(*zip(*t))
 
         # Compute a mask of non-final states and concatenate the batch elements
@@ -243,6 +209,23 @@ def optimize_model():
         state_batch = torch.cat(batch.state)
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
+        for idx, r in enumerate(reward_batch):
+            if r == 1:
+                t = memory.sample(index+idx)
+                batch = Transition(*zip(*t))
+
+                # Compute a mask of non-final states and concatenate the batch elements
+                # (a final state would've been the one after which simulation ended)
+                non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                        batch.next_state)), device=device, dtype=torch.bool)
+                non_final_next_states = torch.cat([s for s in batch.next_state
+                                                   if s is not None])
+                state_batch = torch.cat(batch.state)
+                action_batch = torch.cat(batch.action)
+                reward_batch = torch.cat(batch.reward)
+                for i, rw in enumerate(reward_batch):
+                    reward_batch[i] = reward_batch[0]*(gamma**i)
+                break
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
@@ -269,8 +252,10 @@ def optimize_model():
             param.grad.data.clamp_(-1, 1)
         optimizer.step()
 
-
-num_episodes = 5000
+# GOOGLE: M
+num_episodes = 100
+k = 4
+# GOOGLE: for episode =1 do
 for i_episode in range(num_episodes):
     print("Training Episode %s" % i_episode)
     # Initialize the environment and state
@@ -278,21 +263,29 @@ for i_episode in range(num_episodes):
     env.reset()
     last_screen = get_screen()
     current_screen = get_screen()
+    # Why is state = the difference?
     state = current_screen - last_screen
     for t in count():
-        # Select and perform an action
-        action = select_action(state)
+        # GOOGLE: lines 6+7
+        if t % k == 0:
+            action = select_action(state)
+        else:
+            action = last_action
+        # GOOGLE: line 8
         _, reward, done, _ = env.step(action.item())
         reward = torch.tensor([reward], device=device)
 
         # Observe new state
         last_screen = current_screen
+        last_action = action
         current_screen = get_screen()
+        # END line 8
+
         if not done:
             next_state = current_screen - last_screen
         else:
             next_state = None
-
+        # GOOGLE: line 10
         # Store the transition in memory
         memory.push(state, action, next_state, reward)
 
@@ -302,7 +295,8 @@ for i_episode in range(num_episodes):
         # Perform one step of the optimization (on the target network)
         env.render()
         if train:
-            optimize_model()
+            if t % k == 0:
+                optimize_model()
 
         if done:
             cumulative_reward.append(temp_reward)
@@ -311,7 +305,6 @@ for i_episode in range(num_episodes):
             plot_rewards(save_fig=True)
 
             break
-
     if i_episode % 100 == 0:
         torch.save(policy_net.state_dict(), ('./model/model' + str(i_episode)))
         with open('./model/running_memory.pkl', 'wb') as output:
