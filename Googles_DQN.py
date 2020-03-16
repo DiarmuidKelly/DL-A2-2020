@@ -1,6 +1,7 @@
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
+import numpy as np
 
 
 class DQN(nn.Module):
@@ -23,6 +24,18 @@ class DQN(nn.Module):
         convh = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
         linear_input_size = convw * convh * 64
         self.head = nn.Linear(linear_input_size, outputs)
+
+    def weights_init_uniform_rule(m):
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+            torch.nn.init.kaiming_normal_(m.weight, mode='fan_out')
+            nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.Linear):
+            nn.init.constant_(m.weight, 1)
+            nn.init.constant_(m.bias, 0)
+        # n = m.in_features
+        # y = 1.0 / np.sqrt(n)
+        # m.weight.data.uniform_(-y, y)
+        # m.bias.data.fill_(0)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).

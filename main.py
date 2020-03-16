@@ -28,6 +28,7 @@ train = True
 i_episode = 0
 gamma = 0.7
 seed = random.randint(0,100)
+start_learning = 1000
 episode_durations = []
 cumulative_reward = []
 running_loss = []
@@ -40,7 +41,8 @@ if is_ipython:
     print("Ipython")
 
 print("Making Breakout")
-env = gym.make('Breakout-v0').unwrapped
+# env = gym.make('Breakout-v0').unwrapped
+env = gym.make('BreakoutDeterministic-v4').unwrapped
 env.reset()
 img = plt.imshow(env.render(mode='rgb_array'))
 
@@ -54,7 +56,7 @@ print(device)
 
 
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+                        ('state', 'action', 'next_state', 'reward', 'terminal'))
 
 
 resize = T.Compose([T.ToPILImage(),
@@ -92,9 +94,9 @@ def get_screen():
 
 BATCH_SIZE = 50
 GAMMA = 0.999
-EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 200
+EPS_START = 1
+EPS_END = 0.1
+EPS_DECAY = 2000
 TARGET_UPDATE = 10
 
 init_screen = get_screen()
@@ -104,6 +106,7 @@ _, _, screen_height, screen_width = init_screen.shape
 n_actions = env.action_space.n
 
 policy_net = Googles_DQN.DQN(screen_height, screen_width, n_actions).to(device)
+policy_net.apply(Googles_DQN.DQN.weights_init_uniform_rule)
 target_net = Googles_DQN.DQN(screen_height, screen_width, n_actions).to(device)
 print(target_net)
 # GOOGLE: Initiliaze replay memory D to capacity N
@@ -125,12 +128,15 @@ optimizer = optim.RMSprop(policy_net.parameters())
 
 steps_done = 0
 
-
 def select_action(state):
     global steps_done
     sample = random.random()
-    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-        math.exp(-1. * steps_done / EPS_DECAY)
+    eps_threshold = 1
+    if steps_done > start_learning:
+        eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+            math.exp(-1. * (steps_done-start_learning) / EPS_DECAY)
+    # print(steps_done)
+    # print(eps_threshold)
     steps_done += 1
     if sample > eps_threshold:
         with torch.no_grad():
@@ -187,6 +193,7 @@ def plot_rewards(save_fig=False):
         display.clear_output(wait=True)
         display.display(plt.gcf())
 
+
 def plot_loss(save_fig=False):
     plt.figure(3)
     plt.clf()
@@ -209,12 +216,13 @@ def plot_loss(save_fig=False):
         display.clear_output(wait=True)
         display.display(plt.gcf())
 
+
 def optimize_model():
-    if len(memory) < BATCH_SIZE or len(memory) < 5000:
+    if len(memory) < BATCH_SIZE or len(memory) < start_learning:
         return
     # GOOGLE: Line 11
     for s in range(BATCH_SIZE):
-        index = random.randint(0, len(memory) - 4)
+        index = random.randint(0, len(memory) - 5)
         t = memory.sample(index)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
@@ -233,7 +241,10 @@ def optimize_model():
         reward_batch = torch.cat(batch.reward)
         for idx, r in enumerate(reward_batch):
             if r == 1:
-                t = memory.sample(index+idx)
+                # https://github.com/fg91/Deep-Q-Learning/blob/master/DQN.ipynb
+                # Reward at t=0 is associated with the  reward state,
+                # We take the states leading up to this
+                t = memory.sample(index+idx+1)
                 batch = Transition(*zip(*t))
 
                 # Compute a mask of non-final states and concatenate the batch elements
@@ -245,8 +256,10 @@ def optimize_model():
                 state_batch = torch.cat(batch.state)
                 action_batch = torch.cat(batch.action)
                 reward_batch = torch.cat(batch.reward)
-                for i, rw in enumerate(reward_batch):
-                    reward_batch[i] = reward_batch[0]*(gamma**i)
+
+                reward_batch[0] = 1
+                for i, rw in enumerate(reward_batch[:-1]):
+                    reward_batch[i+1] = reward_batch[i]*(gamma**(i+1))
                 break
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
@@ -262,6 +275,7 @@ def optimize_model():
         next_state_values = torch.zeros(len(t), device=device)
         next_state_values[non_final_mask] = target_net(non_final_next_states).max(1)[0].detach()
         # Compute the expected Q values
+        # Q = r + gamma*max Q'
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
         # Compute Huber loss
@@ -277,7 +291,6 @@ def optimize_model():
 
 # GOOGLE: M
 num_episodes = 500
-k = 4
 # GOOGLE: for episode =1 do
 for i_episode in range(num_episodes):
     print("Training Episode %s" % i_episode)
@@ -285,18 +298,19 @@ for i_episode in range(num_episodes):
     temp_reward = 0
     running_loss.append(0)
     env.reset()
+    last_lives = 0
+
     last_screen = get_screen()
     current_screen = get_screen()
     # Why is state = the difference?
     state = current_screen - last_screen
     for t in count():
         # GOOGLE: lines 6+7
-        if t % k == 0:
-            action = select_action(state)
-        else:
-            action = last_action
+        action = select_action(state)
+
         # GOOGLE: line 8
-        _, reward, done, _ = env.step(action.item())
+        _, reward, done, info = env.step(action.item())
+        print(reward, done, info['ale.lives'])
         reward = torch.tensor([reward], device=device)
 
         # Observe new state
@@ -309,9 +323,10 @@ for i_episode in range(num_episodes):
             next_state = current_screen - last_screen
         else:
             next_state = None
+            print("done")
         # GOOGLE: line 10
         # Store the transition in memory
-        memory.push(state, action, next_state, reward)
+        memory.push(state, action, next_state, reward, done)
 
         # Move to the next state
         state = next_state
@@ -319,8 +334,7 @@ for i_episode in range(num_episodes):
         # Perform one step of the optimization (on the target network)
         env.render()
         if train:
-            if t % k == 0:
-                optimize_model()
+            optimize_model()
 
         if done:
             cumulative_reward.append(temp_reward)
