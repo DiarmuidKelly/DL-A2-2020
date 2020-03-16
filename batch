@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --time=05:00:00
+#SBATCH --time=17:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --mem=12000
+#SBATCH --mem=18000
 module load Python
 pip install -e ./gym-master/. --user
 pip install -e './gym-master/.[atari]' --user

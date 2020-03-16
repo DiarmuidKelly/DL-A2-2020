@@ -20,7 +20,7 @@ class ReplayMemory(object):
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, index):
-        return self.memory[index:index+4]
+        return self.memory[index-4:index]
 
     def __len__(self):
         return len(self.memory)

@@ -11,6 +11,8 @@ from PIL import Image
 import cv2
 import pickle
 
+from plots import *
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -23,15 +25,26 @@ import DQN
 import Googles_DQN
 from replay_memory import ReplayMemory
 
+
+peregrine = True
 load = False
 train = True
+use_negative_rewards = True
 i_episode = 0
-gamma = 0.7
-seed = random.randint(0,100)
-start_learning = 1000
+gamma = 0.9
+seed = random.randint(0, 100)
+start_learning = 15000
+BATCH_SIZE = 100
+GAMMA = 0.999
+EPS_START = 1
+EPS_END = 0.1
+EPS_DECAY = 2000
+TARGET_UPDATE = 10
+
 episode_durations = []
 cumulative_reward = []
 running_loss = []
+
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -80,24 +93,17 @@ def get_screen():
     ######################################################
     # DEBUGGING
     ######################################################
-    cv2.namedWindow('Gray image', cv2.WINDOW_NORMAL)
-    cv2.imshow('Gray image', screen[y:y+h, x:x+w])
-    cv2.resizeWindow('Gray image', 400, 400)
-    cv2.waitKey(1)
+    if not peregrine:
+        cv2.namedWindow('Gray image', cv2.WINDOW_NORMAL)
+        cv2.imshow('Gray image', screen[y:y+h, x:x+w])
+        cv2.resizeWindow('Gray image', 400, 400)
+        cv2.waitKey(1)
 
     screen = screen[y:y+h, x:x+w]
     screen = torch.from_numpy(screen)
 
     # Resize, and add a batch dimension (BCHW)
     return resize(screen).unsqueeze(0).to(device)
-
-
-BATCH_SIZE = 50
-GAMMA = 0.999
-EPS_START = 1
-EPS_END = 0.1
-EPS_DECAY = 2000
-TARGET_UPDATE = 10
 
 init_screen = get_screen()
 _, _, screen_height, screen_width = init_screen.shape
@@ -110,7 +116,7 @@ policy_net.apply(Googles_DQN.DQN.weights_init_uniform_rule)
 target_net = Googles_DQN.DQN(screen_height, screen_width, n_actions).to(device)
 print(target_net)
 # GOOGLE: Initiliaze replay memory D to capacity N
-memory = ReplayMemory(50000)
+memory = ReplayMemory(100000)
 
 if load:
     policy_net.load_state_dict(torch.load('./modelcomplete.pyt', map_location=torch.device('cpu')))
@@ -123,13 +129,16 @@ if load:
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-optimizer = optim.RMSprop(policy_net.parameters())
+optimizer = optim.RMSprop(policy_net.parameters(), lr=0.00001)
 
 
 steps_done = 0
 
+
 def select_action(state):
     global steps_done
+    if steps_done > 1 and torch.cat(Transition(*zip(memory.memory[-1])).reward)[0] == -1.0:
+        return torch.tensor([[1]], device=device, dtype=torch.long)
     sample = random.random()
     eps_threshold = 1
     if steps_done > start_learning:
@@ -148,81 +157,12 @@ def select_action(state):
         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
 
 
-def plot_durations(save_fig=False):
-    plt.figure(2)
-    plt.clf()
-    durations_t = torch.tensor(episode_durations, dtype=torch.float)
-    plt.title('Training...')
-    plt.xlabel('Episode')
-    plt.ylabel('Duration')
-    plt.plot(durations_t.numpy())
-
-    # Take 100 episode averages and plot them too
-    if len(durations_t) >= 100:
-        means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
-        plt.plot(means.numpy())
-
-    plt.pause(0.001)  # pause a bit so that plots are updated
-    if save_fig:
-        plt.savefig("./durations_complete"+str(seed) + ".png")
-    if is_ipython:
-        display.clear_output(wait=True)
-        display.display(plt.gcf())
-
-
-def plot_rewards(save_fig=False):
-    plt.figure(3)
-    plt.clf()
-    rewards = torch.tensor(cumulative_reward, dtype=torch.float)
-    plt.title('Training...')
-    plt.xlabel('Episode')
-    plt.ylabel('Reward')
-    plt.plot(rewards.numpy())
-
-    # Take 100 episode averages and plot them too
-    if len(rewards) >= 100:
-        means = rewards.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
-        plt.plot(means.numpy())
-
-    plt.pause(0.001)  # pause a bit so that plots are updated
-    if save_fig:
-        plt.savefig("./rewards_complete"+str(seed) + ".png")
-    if is_ipython:
-        display.clear_output(wait=True)
-        display.display(plt.gcf())
-
-
-def plot_loss(save_fig=False):
-    plt.figure(3)
-    plt.clf()
-    loss = torch.tensor(running_loss, dtype=torch.float)
-    plt.title('Training...')
-    plt.xlabel('Episode')
-    plt.ylabel('Loss')
-    plt.plot(loss.numpy())
-
-    # Take 100 episode averages and plot them too
-    if len(loss) >= 100:
-        means = loss.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
-        plt.plot(means.numpy())
-
-    plt.pause(0.001)  # pause a bit so that plots are updated
-    if save_fig:
-        plt.savefig("./loss_complete"+str(seed) + ".png")
-    if is_ipython:
-        display.clear_output(wait=True)
-        display.display(plt.gcf())
-
-
 def optimize_model():
     if len(memory) < BATCH_SIZE or len(memory) < start_learning:
         return
     # GOOGLE: Line 11
     for s in range(BATCH_SIZE):
-        index = random.randint(0, len(memory) - 5)
+        index = random.randint(4, len(memory))
         t = memory.sample(index)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
@@ -239,12 +179,13 @@ def optimize_model():
         state_batch = torch.cat(batch.state)
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
+
         for idx, r in enumerate(reward_batch):
             if r == 1:
                 # https://github.com/fg91/Deep-Q-Learning/blob/master/DQN.ipynb
                 # Reward at t=0 is associated with the  reward state,
                 # We take the states leading up to this
-                t = memory.sample(index+idx+1)
+                t = memory.sample(index-(4+idx))
                 batch = Transition(*zip(*t))
 
                 # Compute a mask of non-final states and concatenate the batch elements
@@ -257,11 +198,31 @@ def optimize_model():
                 action_batch = torch.cat(batch.action)
                 reward_batch = torch.cat(batch.reward)
 
-                reward_batch[0] = 1
-                for i, rw in enumerate(reward_batch[:-1]):
-                    reward_batch[i+1] = reward_batch[i]*(gamma**(i+1))
+                reward_batch[-1] = 1
+                for i in range(0, len(reward_batch[:-1])):
+                    reward_batch[-2 - i] = reward_batch[-1 - i] * (gamma ** (i + 1))
                 break
+            if r == -1:
+                # https://github.com/fg91/Deep-Q-Learning/blob/master/DQN.ipynb
+                # Reward at t=0 is associated with the  reward state,
+                # We take the states leading up to this
+                t = memory.sample(index-(4+idx))
+                batch = Transition(*zip(*t))
 
+                # Compute a mask of non-final states and concatenate the batch elements
+                # (a final state would've been the one after which simulation ended)
+                non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                        batch.next_state)), device=device, dtype=torch.bool)
+                non_final_next_states = torch.cat([s for s in batch.next_state
+                                                   if s is not None])
+                state_batch = torch.cat(batch.state)
+                action_batch = torch.cat(batch.action)
+                reward_batch = torch.cat(batch.reward)
+
+                reward_batch[-1] = -1
+                for i in range(0, len(reward_batch[:-1])):
+                    reward_batch[-2-i] = reward_batch[-1-i]*(gamma**(i+1))
+                break
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
@@ -290,7 +251,7 @@ def optimize_model():
 
 
 # GOOGLE: M
-num_episodes = 500
+num_episodes = 300
 # GOOGLE: for episode =1 do
 for i_episode in range(num_episodes):
     print("Training Episode %s" % i_episode)
@@ -310,7 +271,19 @@ for i_episode in range(num_episodes):
 
         # GOOGLE: line 8
         _, reward, done, info = env.step(action.item())
-        print(reward, done, info['ale.lives'])
+        temp_reward += reward
+
+
+        if use_negative_rewards:
+            if info['ale.lives'] < last_lives:
+                terminal_life_lost = True
+                reward = -1.0
+            else:
+                terminal_life_lost = done
+        else:
+            terminal_life_lost = done
+        last_lives = info['ale.lives']
+
         reward = torch.tensor([reward], device=device)
 
         # Observe new state
@@ -323,14 +296,12 @@ for i_episode in range(num_episodes):
             next_state = current_screen - last_screen
         else:
             next_state = None
-            print("done")
         # GOOGLE: line 10
         # Store the transition in memory
-        memory.push(state, action, next_state, reward, done)
+        memory.push(state, action, next_state, reward, terminal_life_lost)
 
         # Move to the next state
         state = next_state
-        temp_reward += reward.data[0]
         # Perform one step of the optimization (on the target network)
         env.render()
         if train:
@@ -339,9 +310,10 @@ for i_episode in range(num_episodes):
         if done:
             cumulative_reward.append(temp_reward)
             episode_durations.append(t + 1)
-            plot_durations(save_fig=True)
-            plot_rewards(save_fig=True)
-            plot_loss()
+            if i_episode % 10 == 0:
+                plot_durations(is_ipython, episode_durations, seed, save_fig=True)
+                plot_rewards(is_ipython, cumulative_reward, seed, save_fig=True)
+                plot_loss(is_ipython, running_loss, seed, save_fig=False)
             break
     if i_episode % 100 == 0:
         torch.save(policy_net.state_dict(), ('./model/model' + str(i_episode)))
@@ -353,8 +325,8 @@ for i_episode in range(num_episodes):
     i_episode += 1
 print('Complete')
 print(i_episode)
-plot_durations(save_fig=True)
-plot_rewards(save_fig=True)
+plot_durations(is_ipython, episode_durations, seed, save_fig=True)
+plot_rewards(is_ipython, cumulative_reward, seed, save_fig=True)
 
 torch.save(policy_net.state_dict(), './model/modelcomplete.pyt')
 with open('./model/modelMemory'+str(seed) + '.pkl', 'wb') as output:
