@@ -3,26 +3,19 @@ import gym
 import math
 import random
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
 from collections import namedtuple
 from itertools import count
 from PIL import Image
 import cv2
 import pickle
-
-from plots import *
-
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
-import scipy.misc
-from gym.wrappers import AtariPreprocessing
 
 import DQN
 import Googles_DQN
+from plots import *
 from replay_memory import ReplayMemory
 
 
