@@ -23,10 +23,12 @@ peregrine = True
 load = False
 train = True
 use_negative_rewards = True
+sequence_length = 10
+
 i_episode = 0
-gamma = 0.9
+gamma = 0.99
 seed = random.randint(0, 100)
-start_learning = 15000
+start_learning = 50000
 BATCH_SIZE = 100
 GAMMA = 0.999
 EPS_START = 1
@@ -109,7 +111,7 @@ policy_net.apply(Googles_DQN.DQN.weights_init_uniform_rule)
 target_net = Googles_DQN.DQN(screen_height, screen_width, n_actions).to(device)
 print(target_net)
 # GOOGLE: Initiliaze replay memory D to capacity N
-memory = ReplayMemory(100000)
+memory = ReplayMemory(500000)
 
 if load:
     policy_net.load_state_dict(torch.load('./modelcomplete.pyt', map_location=torch.device('cpu')))
@@ -122,7 +124,7 @@ if load:
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-optimizer = optim.RMSprop(policy_net.parameters(), lr=0.00001)
+optimizer = optim.RMSprop(policy_net.parameter0s(), lr=0.00025)
 
 
 steps_done = 0
@@ -133,12 +135,9 @@ def select_action(state):
     if steps_done > 1 and torch.cat(Transition(*zip(memory.memory[-1])).reward)[0] == -1.0:
         return torch.tensor([[1]], device=device, dtype=torch.long)
     sample = random.random()
-    eps_threshold = 1
-    if steps_done > start_learning:
-        eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-            math.exp(-1. * (steps_done-start_learning) / EPS_DECAY)
-    # print(steps_done)
-    # print(eps_threshold)
+    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+        math.exp(-1. * (steps_done-start_learning) / EPS_DECAY)
+
     steps_done += 1
     if sample > eps_threshold:
         with torch.no_grad():
@@ -155,7 +154,7 @@ def optimize_model():
         return
     # GOOGLE: Line 11
     for s in range(BATCH_SIZE):
-        index = random.randint(4, len(memory))
+        index = random.randint(sequence_length*2, len(memory))
         t = memory.sample(index)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
@@ -178,7 +177,7 @@ def optimize_model():
                 # https://github.com/fg91/Deep-Q-Learning/blob/master/DQN.ipynb
                 # Reward at t=0 is associated with the  reward state,
                 # We take the states leading up to this
-                t = memory.sample(index-(4+idx))
+                t = memory.sample_run(index - (4 - idx))
                 batch = Transition(*zip(*t))
 
                 # Compute a mask of non-final states and concatenate the batch elements
@@ -199,7 +198,10 @@ def optimize_model():
                 # https://github.com/fg91/Deep-Q-Learning/blob/master/DQN.ipynb
                 # Reward at t=0 is associated with the  reward state,
                 # We take the states leading up to this
-                t = memory.sample(index-(4+idx))
+                t = memory.sample_run(index - (5 - idx))
+                if len(t) == 0:
+                    print()
+                    t = memory.sample_run(index - (5 + idx))
                 batch = Transition(*zip(*t))
 
                 # Compute a mask of non-final states and concatenate the batch elements
@@ -265,7 +267,6 @@ for i_episode in range(num_episodes):
         # GOOGLE: line 8
         _, reward, done, info = env.step(action.item())
         temp_reward += reward
-
 
         if use_negative_rewards:
             if info['ale.lives'] < last_lives:
