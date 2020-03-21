@@ -29,13 +29,15 @@ i_episode = 0
 gamma = 0.99
 seed = random.randint(0, 100)
 start_learning = 50000
-BATCH_SIZE = 100
-GAMMA = 0.999
+BATCH_SIZE = 32
+GAMMA = 0.99
 EPS_START = 1
 EPS_END = 0.1
-EPS_DECAY = 2000
-TARGET_UPDATE = 10
-
+EPS_DECAY = 200000
+TARGET_UPDATE = 4
+# GOOGLE: M
+num_episodes = 1000
+learning_rate = 0.00025
 episode_durations = []
 cumulative_reward = []
 running_loss = []
@@ -124,7 +126,7 @@ if load:
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-optimizer = optim.RMSprop(policy_net.parameter0s(), lr=0.00025)
+optimizer = optim.RMSprop(policy_net.parameters(), lr=learning_rate, momentum=0.95)
 
 
 steps_done = 0
@@ -177,7 +179,7 @@ def optimize_model():
                 # https://github.com/fg91/Deep-Q-Learning/blob/master/DQN.ipynb
                 # Reward at t=0 is associated with the  reward state,
                 # We take the states leading up to this
-                t = memory.sample_run(index - (4 - idx))
+                t = memory.sample(index - (4 - idx))
                 batch = Transition(*zip(*t))
 
                 # Compute a mask of non-final states and concatenate the batch elements
@@ -198,7 +200,7 @@ def optimize_model():
                 # https://github.com/fg91/Deep-Q-Learning/blob/master/DQN.ipynb
                 # Reward at t=0 is associated with the  reward state,
                 # We take the states leading up to this
-                t = memory.sample_run(index - (5 - idx))
+                t = memory.sample(index - (5 - idx))
                 if len(t) == 0:
                     print()
                     t = memory.sample_run(index - (5 + idx))
@@ -235,6 +237,7 @@ def optimize_model():
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
         # Compute Huber loss
+        # perf = (expected_state_action_values - state_action_values)**2
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
         running_loss[-1] += loss.data
         # Optimize the model
@@ -245,9 +248,7 @@ def optimize_model():
         optimizer.step()
 
 
-# GOOGLE: M
-num_episodes = 300
-# GOOGLE: for episode =1 do
+# GOOGLE: for episode = 1 do
 for i_episode in range(num_episodes):
     print("Training Episode %s" % i_episode)
     # Initialize the environment and state
