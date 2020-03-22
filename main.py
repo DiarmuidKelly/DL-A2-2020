@@ -20,7 +20,7 @@ from replay_memory import ReplayMemory
 
 
 peregrine = True
-load = False
+load = True
 train = True
 use_negative_rewards = True
 sequence_length = 10
@@ -36,7 +36,7 @@ EPS_END = 0.1
 EPS_DECAY = 200000
 TARGET_UPDATE = 4
 # GOOGLE: M
-num_episodes = 1000
+num_episodes = 3000
 learning_rate = 0.00025
 episode_durations = []
 cumulative_reward = []
@@ -117,19 +117,21 @@ memory = ReplayMemory(500000)
 
 if load:
     policy_net.load_state_dict(torch.load('./modelcomplete.pyt', map_location=torch.device('cpu')))
-    # with open('./modelMemory.pkl', 'rb') as pickle_file:
-    #     memory = pickle.load(pickle_file)
-    # with open('./cumulative_rewards.pkl', 'rb') as pickle_file:
-    #     cumulative_reward = pickle.load(pickle_file)
-    # with open('./episode_durations.pkl', 'rb') as pickle_file:
-    #     episode_durations = pickle.load(pickle_file)
+    with open('./modelMemory36.pkl', 'rb') as pickle_file:
+        memory = pickle.load(pickle_file)
+    with open('./cumulative_rewards36.pkl', 'rb') as pickle_file:
+        cumulative_reward = pickle.load(pickle_file)
+    with open('./episode_durations36.pkl', 'rb') as pickle_file:
+        episode_durations = pickle.load(pickle_file)
+    steps_done = np.sum(episode_durations)
+else:
+    steps_done = 0
+
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 optimizer = optim.RMSprop(policy_net.parameters(), lr=learning_rate, momentum=0.95)
 
-
-steps_done = 0
 
 
 def select_action(state):
@@ -139,7 +141,6 @@ def select_action(state):
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
         math.exp(-1. * (steps_done-start_learning) / EPS_DECAY)
-
     steps_done += 1
     if sample > eps_threshold:
         with torch.no_grad():
