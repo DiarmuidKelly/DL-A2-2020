@@ -20,7 +20,7 @@ from replay_memory import ReplayMemory
 
 
 peregrine = True
-load = True
+load = False
 train = True
 use_negative_rewards = True
 sequence_length = 10
@@ -28,12 +28,13 @@ sequence_length = 10
 i_episode = 0
 gamma = 0.99
 seed = random.randint(0, 100)
+seed = 101
 start_learning = 50000
 BATCH_SIZE = 32
 GAMMA = 0.99
 EPS_START = 1
 EPS_END = 0.1
-EPS_DECAY = 200000
+EPS_DECAY = 50000
 TARGET_UPDATE = 4
 # GOOGLE: M
 num_episodes = 3000
@@ -131,7 +132,6 @@ target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 optimizer = optim.RMSprop(policy_net.parameters(), lr=learning_rate, momentum=0.95)
-
 
 
 def select_action(state):
