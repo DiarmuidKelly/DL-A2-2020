@@ -18,64 +18,86 @@ import Googles_DQN
 from plots import *
 from replay_memory import ReplayMemory
 
+#####################################
+#   Experimental Setup Params       #
+#####################################
 
-peregrine = True
-load = False
-train = True
-use_negative_rewards = True
-sequence_length = 10
+peregrine = True    # Use Peregrine Configuration i.e. peregrine directories
+load = False    # Load model and replay memory from file
+train = True    # Actively train the model
+use_negative_rewards = True  # Use a negative reward when the agent misses
+seed = random.randint(0, 100)  # Random seed for file naming when saving runs
 
-i_episode = 0
-gamma = 0.99
-seed = random.randint(0, 100)
-seed = 101
-start_learning = 50000
-BATCH_SIZE = 32
-GAMMA = 0.99
-EPS_START = 1
-EPS_END = 0.1
-EPS_DECAY = 50000
-TARGET_UPDATE = 4
-# GOOGLE: M
-num_episodes = 3000
-learning_rate = 0.00025
+#####################################
+#   Algorithm Parameters            #
+#####################################
+i_episode = 0   # The episode count, this changes when a model is loaded that has trained to a higher count
+gamma = 0.99  # Gamma param used in the discounted reward and expected reward calculations
+start_learning = 50000  # Start training the model after this many frames are saved in the replay memory
+BATCH_SIZE = 32 # The batch size to be used at each training step,
+                # Note that when sampling from memory 32 samples, each sample is of batch size (defualt=4)
+                # So, doubling this number increases the number of samples by the increase times 4, computational cost
+EPS_START = 1 # Where to start epsilon in the exploration/exploitation tradeoff. 1 means completely stochastic search
+EPS_END = 0.1   # Where to end the epsilon value, so when at 0, the agent will no longer make random moves,
+                # This is best held around 0.1 so 10% of the moves are still random, meaning the agent can still learn
+EPS_DECAY = 50000 # The decay rate from the EPS_START to the END. Look at the equation in select_action() to understand
+TARGET_UPDATE = 4 # How frequently we update the target network from the policy network
+num_episodes = 3000 # The number of episodes to run for. Note, this includes frames before we start learning
+learning_rate = 0.00025 # Learning rate used in Optimiser
+
+#####################################
+#   Running Data to Plot            #
+#####################################
 episode_durations = []
 cumulative_reward = []
 running_loss = []
 
 
-# set up matplotlib
+#####################################
+#   Experiment                      #
+#####################################
+# Stuff for displaying, ignore this
 is_ipython = 'inline' in matplotlib.get_backend()
 is_ipython = True
 if is_ipython:
     from IPython import display
     print("Ipython")
 
+
+#####################################
+#   Setup OpenAI.Gym                #
+#####################################
 print("Making Breakout")
-# env = gym.make('Breakout-v0').unwrapped
-env = gym.make('BreakoutDeterministic-v4').unwrapped
+env = gym.make('BreakoutDeterministic-v4').unwrapped # Load the deterministic Breakout
+# Deterministic only shows every 4 frames, see googles dqn paper
 env.reset()
 img = plt.imshow(env.render(mode='rgb_array'))
 
 print("Breakout Rendered")
 
+# Initialise matplotlib
 plt.ion()
 
-# if gpu is to be used
+# Set torch device, either CPU or GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
-
+# Define the transition tuple used in learning
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'terminal'))
 
-
+# Define our resizer for the frame capture
 resize = T.Compose([T.ToPILImage(),
                     T.Resize(40, interpolation=Image.CUBIC),
                     T.ToTensor()])
 
 
 def get_screen():
+    '''
+
+    Returns: A Black and White cropped frame from the environment reshaped to a numpy array
+    , clipping out the scoreboard and boundaries, see 'stuff for the paper' folder.
+    '''
 
     screen = env.render(mode='rgb_array')
     _, screen_height, screen_width = screen.shape
@@ -103,38 +125,66 @@ def get_screen():
     # Resize, and add a batch dimension (BCHW)
     return resize(screen).unsqueeze(0).to(device)
 
-init_screen = get_screen()
-_, _, screen_height, screen_width = init_screen.shape
+#####################################
+#   Prepare environment and Neural Network
+#####################################
 
-# Get number of actions from gym action space
+init_screen = get_screen()
+_, _, screen_height, screen_width = init_screen.shape # height and width define the input layer shape
+
+# Get number of actions from gym action space, this defines the output layer shape
 n_actions = env.action_space.n
 
 policy_net = Googles_DQN.DQN(screen_height, screen_width, n_actions).to(device)
 policy_net.apply(Googles_DQN.DQN.weights_init_uniform_rule)
 target_net = Googles_DQN.DQN(screen_height, screen_width, n_actions).to(device)
 print(target_net)
-# GOOGLE: Initiliaze replay memory D to capacity N
+
+# GOOGLE paper: Initialise replay memory D to capacity N
+# Here we set our replay memory size
 memory = ReplayMemory(500000)
 
+#####################################
+#   Load
+#####################################
+# If configured, load a previous run, note the seed number and change accordingly
 if load:
+    seed_to_load = 36
     policy_net.load_state_dict(torch.load('./modelcomplete.pyt', map_location=torch.device('cpu')))
-    with open('./modelMemory36.pkl', 'rb') as pickle_file:
+    with open('./modelMemory' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
         memory = pickle.load(pickle_file)
-    with open('./cumulative_rewards36.pkl', 'rb') as pickle_file:
+    with open('./cumulative_rewards' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
         cumulative_reward = pickle.load(pickle_file)
-    with open('./episode_durations36.pkl', 'rb') as pickle_file:
+    with open('./episode_durations' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
         episode_durations = pickle.load(pickle_file)
     steps_done = np.sum(episode_durations)
 else:
     steps_done = 0
 
+
+#####################################
+#   Required! Initialise the target net to the same format as policy net
+#####################################
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
+#####################################
+#   Define our optimiser
+#####################################
 optimizer = optim.RMSprop(policy_net.parameters(), lr=learning_rate, momentum=0.95)
 
 
 def select_action(state):
+    '''
+
+    Args:
+        state: Current frame read from environment
+
+    Returns: Either the output generated by our policy net when shown a frame
+    or
+    based on EPS threshold, returns a random action
+
+    '''
     global steps_done
     if steps_done > 1 and torch.cat(Transition(*zip(memory.memory[-1])).reward)[0] == -1.0:
         return torch.tensor([[1]], device=device, dtype=torch.long)
@@ -157,7 +207,7 @@ def optimize_model():
         return
     # GOOGLE: Line 11
     for s in range(BATCH_SIZE):
-        index = random.randint(sequence_length*2, len(memory))
+        index = random.randint(20, len(memory))
         t = memory.sample(index)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
@@ -235,7 +285,7 @@ def optimize_model():
         next_state_values[non_final_mask] = target_net(non_final_next_states).max(1)[0].detach()
         # Compute the expected Q values
         # Q = r + gamma*max Q'
-        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+        expected_state_action_values = (next_state_values * gamma) + reward_batch
 
         # Compute Huber loss
         # perf = (expected_state_action_values - state_action_values)**2
