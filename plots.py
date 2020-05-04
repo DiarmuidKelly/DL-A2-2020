@@ -18,13 +18,13 @@ def plot_durations(is_ipython, episode_durations, seed, save_fig=False):
         means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
         means = torch.cat((torch.zeros(99), means))
         plt.plot(means.numpy())
-
-    plt.pause(0.001)  # pause a bit so that plots are updated
+    if not is_ipython:
+        plt.pause(0.001)  # pause a bit so that plots are updated
     if save_fig:
         plt.savefig("./durations_complete"+str(seed) + ".png")
     if is_ipython:
         display.clear_output(wait=True)
-        display.display(plt.gcf())
+        # display.display(plt.gcf())
 
 
 def plot_rewards(is_ipython, cumulative_reward, seed, save_fig=False):
@@ -41,13 +41,13 @@ def plot_rewards(is_ipython, cumulative_reward, seed, save_fig=False):
         means = rewards.unfold(0, 100, 1).mean(1).view(-1)
         means = torch.cat((torch.zeros(99), means))
         plt.plot(means.numpy())
-
-    plt.pause(0.001)  # pause a bit so that plots are updated
+    if not is_ipython:
+        plt.pause(0.001)  # pause a bit so that plots are updated
     if save_fig:
         plt.savefig("./rewards_complete"+str(seed) + ".png")
     if is_ipython:
         display.clear_output(wait=True)
-        display.display(plt.gcf())
+        # display.display(plt.gcf())
 
 
 def plot_loss(is_ipython, running_loss, seed, save_fig=False):
@@ -64,10 +64,10 @@ def plot_loss(is_ipython, running_loss, seed, save_fig=False):
         means = loss.unfold(0, 100, 1).mean(1).view(-1)
         means = torch.cat((torch.zeros(99), means))
         plt.plot(means.numpy())
-
-    plt.pause(0.001)  # pause a bit so that plots are updated
+    if not is_ipython:
+        plt.pause(0.001)  # pause a bit so that plots are updated
     if save_fig:
         plt.savefig("./loss_complete"+str(seed) + ".png")
     if is_ipython:
         display.clear_output(wait=True)
-        display.display(plt.gcf())
+        # display.display(plt.gcf())

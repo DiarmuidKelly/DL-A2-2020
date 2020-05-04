@@ -12,45 +12,73 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
+import argparse
+import time
 
 import DQN
 import Googles_DQN
+from tqdm import tqdm
 from plots import *
 from replay_memory import ReplayMemory
 
+parser = argparse.ArgumentParser(description='Run DQN Atari')
+parser.add_argument('--peregrine', '-p', dest='peregrine', action='store_true',
+                        default=False,
+                        help='Set condition for Peregrine Environment (Default: False)')
+parser.add_argument('--load', '-l', dest='load_from_memory', action='store_true',
+                        default=False,
+                        help='Load the model from memory (Default: False)')
+parser.add_argument('--batch_size', '-b', dest='batch_size', type=int,
+                        default=32,
+                        help='Batch Size (Default: 4)')
+parser.add_argument('--learning_rate', '-lr', dest='learning_rate', type=float,
+                        default=0.00025,
+                        help='Learning Rate (Default: 0.00025)')
+parser.add_argument('--episodes', '-ep', dest='episodes', type=int,
+                        default=2000,
+                        help='Number of Episodes (Default: 2000)')
+parser.add_argument('--negative_rewards', '-neg', dest='negatives', action='store_true',
+                        default=False,
+                        help='Use negatives rewards in training (Default: False)')
+args = parser.parse_args()
+
+print(args.__dict__)
 #####################################
 #   Experimental Setup Params       #
 #####################################
 
-peregrine = True    # Use Peregrine Configuration i.e. peregrine directories
-load = False    # Load model and replay memory from file
+peregrine = args.__dict__['peregrine']    # Use Peregrine Configuration i.e. peregrine directories
+load = args.__dict__['load_from_memory']    # Load model and replay memory from file
 train = True    # Actively train the model
-use_negative_rewards = True  # Use a negative reward when the agent misses
+use_negative_rewards = args.__dict__['negatives']  # Use a negative reward when the agent misses
 seed = random.randint(0, 100)  # Random seed for file naming when saving runs
-
+print("Seed: " + str(seed))
 #####################################
 #   Algorithm Parameters            #
 #####################################
 i_episode = 0   # The episode count, this changes when a model is loaded that has trained to a higher count
-gamma = 0.99  # Gamma param used in the discounted reward and expected reward calculations
+gamma = 0.9  # Gamma param used in the discounted reward and expected reward calculations
 start_learning = 50000  # Start training the model after this many frames are saved in the replay memory
-BATCH_SIZE = 32 # The batch size to be used at each training step,
+BATCH_SIZE = args.__dict__['batch_size'] # The batch size to be used at each training step,
                 # Note that when sampling from memory 32 samples, each sample is of batch size (defualt=4)
                 # So, doubling this number increases the number of samples by the increase times 4, computational cost
 EPS_START = 1 # Where to start epsilon in the exploration/exploitation tradeoff. 1 means completely stochastic search
-EPS_END = 0.1   # Where to end the epsilon value, so when at 0, the agent will no longer make random moves,
+EPS_END = 0.07   # Where to end the epsilon value, so when at 0, the agent will no longer make random moves,
                 # This is best held around 0.1 so 10% of the moves are still random, meaning the agent can still learn
 EPS_DECAY = 50000 # The decay rate from the EPS_START to the END. Look at the equation in select_action() to understand
 TARGET_UPDATE = 4 # How frequently we update the target network from the policy network
-num_episodes = 3000 # The number of episodes to run for. Note, this includes frames before we start learning
-learning_rate = 0.00025 # Learning rate used in Optimiser
+num_episodes = args.__dict__['episodes'] # The number of episodes to run for. Note, this includes frames before we start learning
+learning_rate = args.__dict__['learning_rate'] # Learning rate used in Optimiser
 
 #####################################
 #   Running Data to Plot            #
 #####################################
+pbar = tqdm(range(num_episodes))
+pbar.set_description("ep: %d, er: %.2f, et: %d, tt: %d, exp_size: %d" % (0, 0.0, 0, 0, 0))
+
 episode_durations = []
 cumulative_reward = []
-running_loss = []
+running_loss = [0]
 
 
 #####################################
@@ -126,7 +154,7 @@ def get_screen():
     return resize(screen).unsqueeze(0).to(device)
 
 #####################################
-#   Prepare environment and Neural Network
+#   Prepare environment and Neural Networks
 #####################################
 
 init_screen = get_screen()
@@ -253,7 +281,6 @@ def optimize_model():
                 # We take the states leading up to this
                 t = memory.sample(index - (5 - idx))
                 if len(t) == 0:
-                    print()
                     t = memory.sample_run(index - (5 + idx))
                 batch = Transition(*zip(*t))
 
@@ -298,10 +325,10 @@ def optimize_model():
             param.grad.data.clamp_(-1, 1)
         optimizer.step()
 
+t_count = 0
 
 # GOOGLE: for episode = 1 do
 for i_episode in range(num_episodes):
-    print("Training Episode %s" % i_episode)
     # Initialize the environment and state
     temp_reward = 0
     running_loss.append(0)
@@ -312,6 +339,7 @@ for i_episode in range(num_episodes):
     current_screen = get_screen()
     # Why is state = the difference?
     state = current_screen - last_screen
+    # state = current_screen
     for t in count():
         # GOOGLE: lines 6+7
         action = select_action(state)
@@ -340,6 +368,7 @@ for i_episode in range(num_episodes):
 
         if not done:
             next_state = current_screen - last_screen
+            # next_state = current_screen
         else:
             next_state = None
         # GOOGLE: line 10
@@ -352,14 +381,15 @@ for i_episode in range(num_episodes):
         env.render()
         if train:
             optimize_model()
-
+        t_count += 1
+        episode_t = t
         if done:
             cumulative_reward.append(temp_reward)
             episode_durations.append(t + 1)
-            if i_episode % 10 == 0:
+            if i_episode % 2 == 0 and i_episode != 0:
                 plot_durations(is_ipython, episode_durations, seed, save_fig=True)
                 plot_rewards(is_ipython, cumulative_reward, seed, save_fig=True)
-                plot_loss(is_ipython, running_loss, seed, save_fig=False)
+                plot_loss(is_ipython, running_loss, seed, save_fig=True)
             break
     if i_episode % 100 == 0:
         torch.save(policy_net.state_dict(), ('./model/model' + str(i_episode)))
@@ -368,6 +398,8 @@ for i_episode in range(num_episodes):
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
+    pbar.set_description("ep: %d, el: %.5f, er: %.2f, et: %d, tt: %d, exp_size: %d" % (
+    i_episode, running_loss[-1], temp_reward, episode_t, t_count, len(memory)))
     i_episode += 1
 print('Complete')
 print(i_episode)
@@ -381,6 +413,8 @@ with open('./model/cumulative_rewards'+str(seed) + '.pkl', 'wb') as output:
     pickle.dump(cumulative_reward, output, pickle.HIGHEST_PROTOCOL)
 with open('./model/episode_durations'+str(seed) + '.pkl', 'wb') as output:
     pickle.dump(episode_durations, output, pickle.HIGHEST_PROTOCOL)
+with open('./model/running_loss'+str(seed) + '.pkl', 'wb') as output:
+    pickle.dump(running_loss, output, pickle.HIGHEST_PROTOCOL)
 env.close()
 plt.ioff()
 

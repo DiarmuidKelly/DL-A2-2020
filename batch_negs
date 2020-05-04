@@ -10,4 +10,4 @@ pip install torchvision --user
 pip install matplotlib --user
 pip install tqdm --user
 
-xvfb-run -s "-screen 0 1400x900x24" python main.py -p -ep 20000
+xvfb-run -s "-screen 0 1400x900x24" python main.py -p -ep 20000 -neg
