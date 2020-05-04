@@ -16,7 +16,7 @@ import argparse
 import time
 
 import DQN
-import Googles_DQN
+import Googles_DQN2 as Googles_DQN
 from tqdm import tqdm
 from plots import *
 from replay_memory import ReplayMemory
@@ -51,7 +51,7 @@ peregrine = args.__dict__['peregrine']    # Use Peregrine Configuration i.e. per
 load = args.__dict__['load_from_memory']    # Load model and replay memory from file
 train = True    # Actively train the model
 use_negative_rewards = args.__dict__['negatives']  # Use a negative reward when the agent misses
-seed = random.randint(0, 100)  # Random seed for file naming when saving runs
+seed = random.randint(100, 200)  # Random seed for file naming when saving runs
 print("Seed: " + str(seed))
 #####################################
 #   Algorithm Parameters            #
@@ -116,7 +116,7 @@ Transition = namedtuple('Transition',
 
 # Define our resizer for the frame capture
 resize = T.Compose([T.ToPILImage(),
-                    T.Resize(40, interpolation=Image.CUBIC),
+                    T.Resize(84, interpolation=Image.CUBIC),
                     T.ToTensor()])
 
 
@@ -325,6 +325,7 @@ def optimize_model():
             param.grad.data.clamp_(-1, 1)
         optimizer.step()
 
+
 t_count = 0
 
 # GOOGLE: for episode = 1 do
@@ -338,10 +339,10 @@ for i_episode in range(num_episodes):
     last_screen = get_screen()
     current_screen = get_screen()
     # Why is state = the difference?
-    state = current_screen - last_screen
     # state = current_screen
     for t in count():
         # GOOGLE: lines 6+7
+        state = current_screen
         action = select_action(state)
 
         # GOOGLE: line 8
@@ -367,7 +368,12 @@ for i_episode in range(num_episodes):
         # END line 8
 
         if not done:
-            next_state = current_screen - last_screen
+            # next_state = current_screen - last_screen
+            next_state = current_screen
+            # cv2.namedWindow('State', cv2.WINDOW_NORMAL)
+            # cv2.imshow('State', state[0].numpy().transpose(1, 2, 0))
+            # cv2.resizeWindow('State', 400, 400)
+            # cv2.waitKey(1)
             # next_state = current_screen
         else:
             next_state = None
