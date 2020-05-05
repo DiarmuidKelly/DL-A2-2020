@@ -40,6 +40,9 @@ parser.add_argument('--episodes', '-ep', dest='episodes', type=int,
 parser.add_argument('--negative_rewards', '-neg', dest='negatives', action='store_true',
                         default=False,
                         help='Use negatives rewards in training (Default: False)')
+parser.add_argument('--train', '-t', dest='train', action='store_false',
+                        default=True,
+                        help='Train model (Default: True)')
 args = parser.parse_args()
 
 print(args.__dict__)
@@ -49,7 +52,7 @@ print(args.__dict__)
 
 peregrine = args.__dict__['peregrine']    # Use Peregrine Configuration i.e. peregrine directories
 load = args.__dict__['load_from_memory']    # Load model and replay memory from file
-train = True    # Actively train the model
+train = args.__dict__['train']    # Actively train the model
 use_negative_rewards = args.__dict__['negatives']  # Use a negative reward when the agent misses
 seed = random.randint(100, 200)  # Random seed for file naming when saving runs
 print("Seed: " + str(seed))
@@ -57,8 +60,8 @@ print("Seed: " + str(seed))
 #   Algorithm Parameters            #
 #####################################
 i_episode = 0   # The episode count, this changes when a model is loaded that has trained to a higher count
-gamma = 0.9  # Gamma param used in the discounted reward and expected reward calculations
-start_learning = 50000  # Start training the model after this many frames are saved in the replay memory
+gamma = 0.99  # Gamma param used in the discounted reward and expected reward calculations
+start_learning = 500  # Start training the model after this many frames are saved in the replay memory
 BATCH_SIZE = args.__dict__['batch_size'] # The batch size to be used at each training step,
                 # Note that when sampling from memory 32 samples, each sample is of batch size (defualt=4)
                 # So, doubling this number increases the number of samples by the increase times 4, computational cost
@@ -177,15 +180,16 @@ memory = ReplayMemory(500000)
 #####################################
 # If configured, load a previous run, note the seed number and change accordingly
 if load:
-    seed_to_load = 36
-    policy_net.load_state_dict(torch.load('./modelcomplete.pyt', map_location=torch.device('cpu')))
-    with open('./modelMemory' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
-        memory = pickle.load(pickle_file)
-    with open('./cumulative_rewards' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
-        cumulative_reward = pickle.load(pickle_file)
-    with open('./episode_durations' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
-        episode_durations = pickle.load(pickle_file)
-    steps_done = np.sum(episode_durations)
+    seed_to_load = 130
+    policy_net.load_state_dict(torch.load('./model1400', map_location=torch.device('cpu')))
+    # with open('./modelMemory' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
+    #     memory = pickle.load(pickle_file)
+    # with open('./cumulative_rewards' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
+    #     cumulative_reward = pickle.load(pickle_file)
+    # with open('./episode_durations' + str(seed_to_load) + '.pkl', 'rb') as pickle_file:
+    #     episode_durations = pickle.load(pickle_file)
+    # steps_done = np.sum(episode_durations)
+    steps_done = 0
 else:
     steps_done = 0
 
@@ -338,8 +342,7 @@ for i_episode in range(num_episodes):
 
     last_screen = get_screen()
     current_screen = get_screen()
-    # Why is state = the difference?
-    # state = current_screen
+
     for t in count():
         # GOOGLE: lines 6+7
         state = current_screen
@@ -370,11 +373,10 @@ for i_episode in range(num_episodes):
         if not done:
             # next_state = current_screen - last_screen
             next_state = current_screen
-            # cv2.namedWindow('State', cv2.WINDOW_NORMAL)
-            # cv2.imshow('State', state[0].numpy().transpose(1, 2, 0))
-            # cv2.resizeWindow('State', 400, 400)
-            # cv2.waitKey(1)
-            # next_state = current_screen
+            cv2.namedWindow('State', cv2.WINDOW_NORMAL)
+            cv2.imshow('State', state[0].numpy().transpose(1, 2, 0))
+            cv2.resizeWindow('State', 400, 400)
+            cv2.waitKey(1)
         else:
             next_state = None
         # GOOGLE: line 10
